@@ -136,6 +136,7 @@ _WRITE_TOOL_NAMES = {
     "draft_pmax_asset_group",
     "draft_pmax_url_expansion",
     "draft_pmax_asset_group_assets",
+    "draft_call_asset",
     "draft_ad_group",
     "update_campaign",
     "draft_responsive_search_ad",
@@ -1211,6 +1212,31 @@ def draft_pmax_asset_group_assets(
         customer_id=customer_id or _config.ads.customer_id,
         asset_group_id=asset_group_id,
         add=add,
+    )
+
+
+@mcp.tool(annotations=_WRITE)
+@_safe
+def draft_call_asset(
+    campaign_id: str,
+    phone_number: str,
+    country_code: str = "US",
+    customer_id: str = "",
+) -> dict:
+    """Draft a campaign-level CALL asset (phone number). Returns a PREVIEW.
+
+    Creates a CallAsset and links it to the campaign (field_type CALL).
+    Works for PMax and Search campaigns. Run validate_plan_only first, then
+    confirm_and_apply. phone_number: any format, e.g. (270) 383-7510.
+    """
+    from adloop.ads.pmax_write import draft_call_asset as _impl
+
+    return _impl(
+        _config,
+        customer_id=customer_id or _config.ads.customer_id,
+        campaign_id=campaign_id,
+        phone_number=phone_number,
+        country_code=country_code,
     )
 
 

@@ -927,3 +927,91 @@ def apply_add_pmax_asset_group_assets(
     if not validate_only:
         result.update(_collect(resp, labels))
     return result
+
+
+# ---------------------------------------------------------------------------
+# Call asset (campaign level)
+# ---------------------------------------------------------------------------
+
+def validate_call_asset(phone_number: str, country_code: str) -> tuple[dict | None, list[str]]:
+    errors: list[str] = []
+    cc = str(country_code or "").strip().upper()
+    if len(cc) != 2 or not cc.isalpha():
+        errors.append("country_code must be a 2-letter ISO code (e.g. US)")
+    raw = str(phone_number or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        errors.append("phone_number is required")
+    elif cc == "US":
+        if len(digits) == 11 and digits.startswith("1"):
+            digits = digits[1:]
+        if len(digits) != 10:
+            errors.append(f"US phone_number must have 10 digits, got {len(digits)} ({raw!r})")
+    elif not 6 <= len(digits) <= 15:
+        errors.append(f"phone_number must have 6-15 digits, got {len(digits)} ({raw!r})")
+    if errors:
+        return None, errors
+    return {"phone_number": digits, "country_code": cc}, []
+
+
+def draft_call_asset(
+    config: "AdLoopConfig",
+    *,
+    customer_id: str = "",
+    campaign_id: str = "",
+    phone_number: str = "",
+    country_code: str = "US",
+) -> dict:
+    """Draft a campaign-level call asset (CallAsset + CampaignAsset CALL link)."""
+    from adloop.safety.guards import SafetyViolation, check_blocked_operation
+    from adloop.safety.preview import ChangePlan, store_plan
+
+    try:
+        check_blocked_operation("create_call_asset", config.safety)
+    except SafetyViolation as e:
+        return {"error": str(e)}
+    errors: list[str] = []
+    if not str(campaign_id or "").strip().isdigit():
+        errors.append("campaign_id must be numeric")
+    call, call_errors = validate_call_asset(phone_number, country_code)
+    errors.extend(call_errors)
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+    plan = ChangePlan(
+        operation="create_call_asset",
+        entity_type="campaign_asset",
+        entity_id=str(campaign_id).strip(),
+        customer_id=customer_id,
+        changes={"campaign_id": str(campaign_id).strip(), **call},
+    )
+    store_plan(plan)
+    return plan.to_preview()
+
+
+def build_call_asset_ops(client, cid: str, changes: dict):
+    asset_service = client.get_service("AssetService")
+    asset_rn = asset_service.asset_path(cid, "-3001")
+    op1 = client.get_type("MutateOperation")
+    a = op1.asset_operation.create
+    a.resource_name = asset_rn
+    a.call_asset.country_code = changes["country_code"]
+    a.call_asset.phone_number = changes["phone_number"]
+    op2 = client.get_type("MutateOperation")
+    ca = op2.campaign_asset_operation.create
+    ca.campaign = client.get_service("CampaignService").campaign_path(
+        cid, changes["campaign_id"]
+    )
+    ca.asset = asset_rn
+    ca.field_type = client.enums.AssetFieldTypeEnum.CALL
+    return [op1, op2], ["asset", "campaign_asset"]
+
+
+def apply_create_call_asset(
+    client, cid: str, changes: dict, validate_only: bool = False
+) -> dict:
+    ops, labels = build_call_asset_ops(client, cid, changes)
+    resp = _send(client, cid, ops, validate_only)
+    result = {"validate_only": validate_only, "operations": len(ops)}
+    if not validate_only:
+        result.update(_collect(resp, labels))
+    return result

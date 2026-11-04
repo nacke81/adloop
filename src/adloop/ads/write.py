@@ -2172,6 +2172,7 @@ def _execute_plan(config: AdLoopConfig, plan: object) -> dict:
         "create_pmax_asset_group": _apply_create_pmax_asset_group,
         "update_pmax_url_expansion": _apply_update_pmax_url_expansion,
         "add_pmax_asset_group_assets": _apply_add_pmax_asset_group_assets,
+        "create_call_asset": _apply_create_call_asset,
     }
 
     handler = dispatch.get(plan.operation)
@@ -2191,6 +2192,12 @@ def _execute_plan(config: AdLoopConfig, plan: object) -> dict:
         return handler(client, cid, plan.entity_type, plan.entity_id)
 
     return handler(client, cid, plan.changes)
+
+
+def _apply_create_call_asset(client: object, cid: str, changes: dict) -> dict:
+    from adloop.ads.pmax_write import apply_create_call_asset
+
+    return apply_create_call_asset(client, cid, changes)
 
 
 def _apply_add_pmax_asset_group_assets(client: object, cid: str, changes: dict) -> dict:
@@ -2235,6 +2242,7 @@ def validate_plan_only(config: AdLoopConfig, *, plan_id: str) -> dict:
         return {"error": f"No pending plan found with id '{plan_id}'."}
     from adloop.ads.pmax_write import (
         apply_add_pmax_asset_group_assets,
+        apply_create_call_asset,
         apply_update_pmax_url_expansion,
     )
 
@@ -2243,6 +2251,7 @@ def validate_plan_only(config: AdLoopConfig, *, plan_id: str) -> dict:
         "create_pmax_asset_group": apply_create_pmax_asset_group,
         "update_pmax_url_expansion": apply_update_pmax_url_expansion,
         "add_pmax_asset_group_assets": apply_add_pmax_asset_group_assets,
+        "create_call_asset": apply_create_call_asset,
     }.get(plan.operation)
     if plan.operation == "remove_entity" and plan.entity_type in (
         "asset_group", "asset_group_asset",
