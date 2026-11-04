@@ -137,6 +137,7 @@ _WRITE_TOOL_NAMES = {
     "draft_pmax_url_expansion",
     "draft_pmax_asset_group_assets",
     "draft_call_asset",
+    "draft_youtube_video_upload",
     "draft_ad_group",
     "update_campaign",
     "draft_responsive_search_ad",
@@ -1237,6 +1238,37 @@ def draft_call_asset(
         campaign_id=campaign_id,
         phone_number=phone_number,
         country_code=country_code,
+    )
+
+
+@mcp.tool(annotations=_WRITE)
+@_safe
+def draft_youtube_video_upload(
+    video_path: str,
+    title: str,
+    description: str = "",
+    privacy: str = "UNLISTED",
+    channel_id: str | None = None,
+    customer_id: str = "",
+) -> dict:
+    """Draft a YouTube upload through the Google Ads API. Returns a PREVIEW.
+
+    Checks the local file first (exists, .mp4, size cap). privacy must be
+    UNLISTED or PRIVATE, never PUBLIC. channel_id omitted uploads to the
+    Google-managed channel for the Ads account (the default path). The
+    service has no validate_only. confirm_and_apply uploads the file, polls
+    until PROCESSED, and returns the 11-char video_id.
+    """
+    from adloop.ads.youtube_upload import draft_youtube_video_upload as _impl
+
+    return _impl(
+        _config,
+        customer_id=customer_id or _config.ads.customer_id,
+        video_path=video_path,
+        title=title,
+        description=description,
+        privacy=privacy,
+        channel_id=channel_id,
     )
 
 
