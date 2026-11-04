@@ -2172,6 +2172,7 @@ def _execute_plan(config: AdLoopConfig, plan: object) -> dict:
         "create_pmax_asset_group": _apply_create_pmax_asset_group,
         "update_pmax_url_expansion": _apply_update_pmax_url_expansion,
         "add_pmax_asset_group_assets": _apply_add_pmax_asset_group_assets,
+        "create_youtube_video_upload": _apply_create_youtube_video_upload,
         "create_call_asset": _apply_create_call_asset,
     }
 
@@ -2192,6 +2193,12 @@ def _execute_plan(config: AdLoopConfig, plan: object) -> dict:
         return handler(client, cid, plan.entity_type, plan.entity_id)
 
     return handler(client, cid, plan.changes)
+
+
+def _apply_create_youtube_video_upload(client: object, cid: str, changes: dict) -> dict:
+    from adloop.ads.youtube_upload import apply_create_youtube_video_upload
+
+    return apply_create_youtube_video_upload(client, cid, changes)
 
 
 def _apply_create_call_asset(client: object, cid: str, changes: dict) -> dict:
