@@ -371,6 +371,7 @@ class TestServerGuards:
             "draft_pmax_asset_group",
             "draft_pmax_url_expansion",
             "draft_pmax_asset_group_assets",
+            "draft_call_asset",
         ):
             assert name in server._WRITE_TOOL_NAMES
             monkeypatch.setenv("ADLOOP_ALLOWED_CUSTOMER_ID", "3865591631")
