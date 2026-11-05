@@ -103,8 +103,8 @@ These tools call both APIs internally and return unified results with computed `
 | `add_to_negative_keyword_list` | Append keywords to an EXISTING shared negative keyword list (does NOT add) | `shared_set_id` (from `get_negative_keyword_lists`), keyword list, `match_type` |
 | `attach_shared_set_to_campaigns` | Attach an EXISTING shared set (e.g. shared negative keyword list) to one or more campaigns. Use after creating a campaign to inherit pre-built negatives. | `shared_set_id` (from `get_negative_keyword_lists`), `campaign_ids` list |
 | `detach_shared_set_from_campaigns` | Detach a shared set from one or more campaigns. Removes only the linkage; the shared set and its keywords stay intact. | `shared_set_id`, `campaign_ids` list |
-| `pause_entity` | Propose pausing campaign/ad group/ad/keyword | `entity_type`, `entity_id` |
-| `enable_entity` | Propose enabling paused entity | `entity_type`, `entity_id` |
+| `pause_entity` | Propose pausing campaign/ad group/ad/keyword/asset_group | `entity_type`, `entity_id` |
+| `enable_entity` | Propose enabling paused entity (incl. `asset_group`) | `entity_type`, `entity_id` |
 | `remove_entity` | Propose REMOVING an entity (irreversible) | `entity_type` (incl. "negative_keyword", "shared_criterion", "campaign_asset", "asset", "customer_asset"), `entity_id` |
 | `confirm_and_apply` | Execute a previously previewed change | `plan_id` from a draft tool, `dry_run` (default true) |
 

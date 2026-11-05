@@ -1881,3 +1881,80 @@ def test_apply_detach_shared_set_from_campaigns_surfaces_partial_failure():
     failed = result["failed_campaigns"][0]
     assert failed["campaign_id"] == "1001"
     assert failed["operation_index"] == 0
+
+
+class _FakeAssetGroupService:
+    def __init__(self):
+        self.operations = None
+
+    def mutate_asset_groups(self, customer_id: str, operations: list[object]) -> object:
+        self.operations = operations
+        return SimpleNamespace(
+            results=[
+                SimpleNamespace(resource_name=f"customers/{customer_id}/assetGroups/9")
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    ("fn_name", "target"),
+    [("pause_entity", "PAUSED"), ("enable_entity", "ENABLED")],
+)
+def test_status_preview_supports_asset_group(config, fn_name, target):
+    result = getattr(write, fn_name)(
+        config,
+        customer_id="123-456-7890",
+        entity_type="asset_group",
+        entity_id="6543210987",
+    )
+
+    assert "error" not in result
+    assert result["entity_type"] == "asset_group"
+    assert result["entity_id"] == "6543210987"
+    assert result["changes"]["target_status"] == target
+    assert result["plan_id"]
+
+
+@pytest.mark.parametrize(
+    ("status", "enum_name"), [("PAUSED", "PAUSED"), ("ENABLED", "ENABLED")]
+)
+def test_apply_status_change_asset_group_resource_and_mask(status, enum_name):
+    service = _FakeAssetGroupService()
+    client = _FakeClient({"AssetGroupService": service})
+
+    result = write._apply_status_change(
+        client, "1234567890", "asset_group", "6543210987", status
+    )
+
+    operation = service.operations[0]
+    assert operation.update.resource_name == "customers/1234567890/assetGroups/6543210987"
+    assert list(operation.update_mask.paths) == ["status"]
+    assert operation.update.status == getattr(
+        client.enums.AssetGroupStatusEnum, enum_name
+    )
+    assert result == {"resource_name": "customers/1234567890/assetGroups/9"}
+
+
+def test_status_preview_still_rejects_unknown_entity_type(config):
+    result = write.pause_entity(
+        config,
+        customer_id="123-456-7890",
+        entity_type="asset",
+        entity_id="1",
+    )
+
+    assert result["error"] == "Validation failed"
+    assert "entity_type must be one of" in result["details"][0]
+
+
+@pytest.mark.parametrize("entity_type", ["campaign", "ad_group", "ad", "keyword"])
+def test_status_preview_existing_types_unchanged(config, entity_type):
+    result = write.enable_entity(
+        config,
+        customer_id="123-456-7890",
+        entity_type=entity_type,
+        entity_id="1~2",
+    )
+
+    assert "error" not in result
+    assert result["changes"]["target_status"] == "ENABLED"

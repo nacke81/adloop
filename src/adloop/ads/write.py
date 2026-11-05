@@ -734,7 +734,7 @@ def pause_entity(
     entity_type: str = "",
     entity_id: str = "",
 ) -> dict:
-    """Draft pausing a campaign/ad group/ad/keyword — returns preview."""
+    """Draft pausing a campaign/ad group/ad/keyword/asset_group — returns preview."""
     return _draft_status_change(
         config, "pause_entity", customer_id, entity_type, entity_id, "PAUSED"
     )
@@ -747,7 +747,7 @@ def enable_entity(
     entity_type: str = "",
     entity_id: str = "",
 ) -> dict:
-    """Draft enabling a paused entity — returns preview."""
+    """Draft enabling a paused entity (campaign/ad group/ad/keyword/asset_group) — returns preview."""
     return _draft_status_change(
         config, "enable_entity", customer_id, entity_type, entity_id, "ENABLED"
     )
@@ -1518,6 +1518,7 @@ def confirm_and_apply(
 
 _VALID_MATCH_TYPES = {"EXACT", "PHRASE", "BROAD"}
 _VALID_ENTITY_TYPES = {"campaign", "ad_group", "ad", "keyword"}
+_STATUS_ENTITY_TYPES = _VALID_ENTITY_TYPES | {"asset_group"}
 _REMOVABLE_ENTITY_TYPES = _VALID_ENTITY_TYPES | {
     "ad_group_ad", "asset_group", "asset_group_asset",
     "negative_keyword", "campaign_asset", "asset", "customer_asset",
@@ -2088,9 +2089,9 @@ def _draft_status_change(
         return {"error": str(e)}
 
     errors = []
-    if entity_type not in _VALID_ENTITY_TYPES:
+    if entity_type not in _STATUS_ENTITY_TYPES:
         errors.append(
-            f"entity_type must be one of {_VALID_ENTITY_TYPES}, got '{entity_type}'"
+            f"entity_type must be one of {sorted(_STATUS_ENTITY_TYPES)}, got '{entity_type}'"
         )
     if not entity_id:
         errors.append("entity_id is required")
@@ -2938,6 +2939,14 @@ def _apply_status_change(
         entity.resource_name = service.ad_group_path(cid, entity_id)
         entity.status = getattr(client.enums.AdGroupStatusEnum, status)
         mutate = service.mutate_ad_groups
+
+    elif entity_type == "asset_group":
+        service = client.get_service("AssetGroupService")
+        operation = client.get_type("AssetGroupOperation")
+        entity = operation.update
+        entity.resource_name = f"customers/{cid}/assetGroups/{entity_id}"
+        entity.status = getattr(client.enums.AssetGroupStatusEnum, status)
+        mutate = service.mutate_asset_groups
 
     elif entity_type == "ad":
         resolved_id = _resolve_ad_entity_id(client, cid, entity_id)

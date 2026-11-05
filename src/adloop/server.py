@@ -1656,14 +1656,15 @@ def pause_entity(
     entity_id: str,
     customer_id: str = "",
 ) -> dict:
-    """Draft pausing a campaign, ad group, ad, or keyword — returns a PREVIEW.
+    """Draft pausing a campaign, ad group, ad, keyword, or PMax asset group — returns a PREVIEW.
 
-    entity_type: "campaign", "ad_group", "ad", or "keyword"
+    entity_type: "campaign", "ad_group", "ad", "keyword", or "asset_group"
     entity_id format by type:
       - campaign: campaign ID (e.g. "12345678")
       - ad_group: ad group ID (e.g. "12345678")
       - ad: "adGroupId~adId" (e.g. "12345678~987654")
       - keyword: "adGroupId~criterionId" (e.g. "12345678~987654")
+      - asset_group: bare PMax asset group ID (e.g. "6543210987")
 
     Call confirm_and_apply with the returned plan_id to execute.
     """
@@ -1684,14 +1685,15 @@ def enable_entity(
     entity_id: str,
     customer_id: str = "",
 ) -> dict:
-    """Draft enabling a paused campaign, ad group, ad, or keyword — returns a PREVIEW.
+    """Draft enabling a paused campaign, ad group, ad, keyword, or PMax asset group — returns a PREVIEW.
 
-    entity_type: "campaign", "ad_group", "ad", or "keyword"
+    entity_type: "campaign", "ad_group", "ad", "keyword", or "asset_group"
     entity_id format by type:
       - campaign: campaign ID (e.g. "12345678")
       - ad_group: ad group ID (e.g. "12345678")
       - ad: "adGroupId~adId" (e.g. "12345678~987654")
       - keyword: "adGroupId~criterionId" (e.g. "12345678~987654")
+      - asset_group: bare PMax asset group ID (e.g. "6543210987")
 
     Call confirm_and_apply with the returned plan_id to execute.
     """
