@@ -122,8 +122,8 @@ All write operations follow a **draft → preview → confirm** workflow. Nothin
 | `draft_keywords` | Propose keyword additions with match types. Proactively checks bidding strategy — blocks BROAD match on Manual CPC campaigns. |
 | `add_negative_keywords` | Propose negative keywords directly on a campaign |
 | `propose_negative_keyword_list` | Draft a shared negative keyword list (SharedSet) and attach it to a campaign — reusable across multiple campaigns |
-| `pause_entity` | Pause a campaign, ad group, ad, or keyword |
-| `enable_entity` | Re-enable a paused entity |
+| `pause_entity` | Pause a campaign, ad group, ad, keyword, or PMax asset group (`entity_type=asset_group`) |
+| `enable_entity` | Re-enable a paused entity (campaign, ad group, ad, keyword, or PMax asset group) |
 | `remove_entity` | Permanently remove an entity (irreversible — prefers pause). Supports keywords, negative keywords, ads, ad groups, campaigns. |
 | `confirm_and_apply` | Execute a previously previewed change |
 
