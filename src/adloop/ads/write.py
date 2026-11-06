@@ -2175,6 +2175,9 @@ def _execute_plan(config: AdLoopConfig, plan: object) -> dict:
         "add_pmax_asset_group_assets": _apply_add_pmax_asset_group_assets,
         "create_youtube_video_upload": _apply_create_youtube_video_upload,
         "create_call_asset": _apply_create_call_asset,
+        "create_conversion_action": _apply_create_conversion_action,
+        "update_conversion_action": _apply_update_conversion_action,
+        "update_call_asset": _apply_update_call_asset,
     }
 
     handler = dispatch.get(plan.operation)
@@ -2200,6 +2203,24 @@ def _apply_create_youtube_video_upload(client: object, cid: str, changes: dict) 
     from adloop.ads.youtube_upload import apply_create_youtube_video_upload
 
     return apply_create_youtube_video_upload(client, cid, changes)
+
+
+def _apply_create_conversion_action(client: object, cid: str, changes: dict) -> dict:
+    from adloop.ads.conversion_write import apply_create_conversion_action
+
+    return apply_create_conversion_action(client, cid, changes)
+
+
+def _apply_update_conversion_action(client: object, cid: str, changes: dict) -> dict:
+    from adloop.ads.conversion_write import apply_update_conversion_action
+
+    return apply_update_conversion_action(client, cid, changes)
+
+
+def _apply_update_call_asset(client: object, cid: str, changes: dict) -> dict:
+    from adloop.ads.conversion_write import apply_update_call_asset
+
+    return apply_update_call_asset(client, cid, changes)
 
 
 def _apply_create_call_asset(client: object, cid: str, changes: dict) -> dict:
@@ -2261,6 +2282,14 @@ def validate_plan_only(config: AdLoopConfig, *, plan_id: str) -> dict:
         "add_pmax_asset_group_assets": apply_add_pmax_asset_group_assets,
         "create_call_asset": apply_create_call_asset,
     }.get(plan.operation)
+    if fn is None:
+        from adloop.ads import conversion_write as _cw
+
+        fn = {
+            "create_conversion_action": _cw.apply_create_conversion_action,
+            "update_conversion_action": _cw.apply_update_conversion_action,
+            "update_call_asset": _cw.apply_update_call_asset,
+        }.get(plan.operation)
     if plan.operation == "remove_entity" and plan.entity_type in (
         "asset_group", "asset_group_asset",
     ):
@@ -2271,7 +2300,7 @@ def validate_plan_only(config: AdLoopConfig, *, plan_id: str) -> dict:
             return _apply_remove(client, cid, etype, eid, validate_only=validate_only)
 
     if fn is None:
-        return {"error": f"validate_only is supported for PMax plans and asset_group / asset_group_asset removal only, not '{plan.operation}'."}
+        return {"error": f"validate_only is supported for PMax plans, conversion action / call asset plans, and asset_group / asset_group_asset removal only, not '{plan.operation}'."}
     client = get_ads_client(config)
     try:
         result = fn(client, normalize_customer_id(plan.customer_id), plan.changes, validate_only=True)

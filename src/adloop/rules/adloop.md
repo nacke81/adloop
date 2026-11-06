@@ -92,6 +92,9 @@ These tools call both APIs internally and return unified results with computed `
 | `draft_ad_group` | Create a new ad group within an existing campaign (does NOT publish) | `campaign_id` (REQUIRED), `ad_group_name` (REQUIRED), `keywords` (optional list of {text, match_type}), `cpc_bid_micros` (optional) |
 | `update_campaign` | Modify existing campaign settings — bid strategy, budget, geo targets, language targets, Search partners, display expansion | `campaign_id` (REQUIRED), plus any of: `bidding_strategy`, `daily_budget`, `geo_target_ids`, `language_ids`, `search_partners_enabled`, `display_network_enabled`, TARGET_SPEND `max_cpc` |
 | `update_ad_group` | Update ad group name and/or MANUAL_CPC `max_cpc` | `ad_group_id`, optional `ad_group_name`, optional `max_cpc` |
+| `create_conversion_action` | Draft new conversion action (AD_CALL / WEBSITE_CALL) | `name`, `type`, `category`, `phone_call_duration_seconds`, `counting_type`, `status`, `primary_for_goal`, optional `value_settings` |
+| `update_conversion_action` | Update conversion action (only primary_for_goal, status, counting_type, phone_call_duration_seconds) | `conversion_action_id`, fields |
+| `update_call_asset` | Update CALL asset conversion setting (call_conversion_reporting_state, call_conversion_action); run `validate_plan_only` first | `asset_id`, fields |
 | `draft_responsive_search_ad` | Create RSA preview (does NOT publish) | 3-15 headlines (≤30 chars), 2-4 descriptions (≤90 chars), final_url required, path1/path2 (≤15 chars each). Each headline/description may be a plain string (unpinned) or `{"text": "...", "pinned_field": "HEADLINE_1"}` (pinned). Valid pin slots: `HEADLINE_1/2/3`, `DESCRIPTION_1/2`. Google permits ≤2 headlines per slot, ≤1 description per slot. |
 | `draft_callouts` | Create callout assets for a campaign (does NOT publish) | `campaign_id`, `callouts` list with 1-25 chars each |
 | `draft_structured_snippets` | Create structured snippet assets for a campaign (does NOT publish) | `campaign_id`, `snippets` list of `{header, values}` with official header values and 3-10 values |
@@ -103,8 +106,8 @@ These tools call both APIs internally and return unified results with computed `
 | `add_to_negative_keyword_list` | Append keywords to an EXISTING shared negative keyword list (does NOT add) | `shared_set_id` (from `get_negative_keyword_lists`), keyword list, `match_type` |
 | `attach_shared_set_to_campaigns` | Attach an EXISTING shared set (e.g. shared negative keyword list) to one or more campaigns. Use after creating a campaign to inherit pre-built negatives. | `shared_set_id` (from `get_negative_keyword_lists`), `campaign_ids` list |
 | `detach_shared_set_from_campaigns` | Detach a shared set from one or more campaigns. Removes only the linkage; the shared set and its keywords stay intact. | `shared_set_id`, `campaign_ids` list |
-| `pause_entity` | Propose pausing campaign/ad group/ad/keyword | `entity_type`, `entity_id` |
-| `enable_entity` | Propose enabling paused entity | `entity_type`, `entity_id` |
+| `pause_entity` | Propose pausing campaign/ad group/ad/keyword/asset_group | `entity_type`, `entity_id` |
+| `enable_entity` | Propose enabling paused entity (incl. `asset_group`) | `entity_type`, `entity_id` |
 | `remove_entity` | Propose REMOVING an entity (irreversible) | `entity_type` (incl. "negative_keyword", "shared_criterion", "campaign_asset", "asset", "customer_asset"), `entity_id` |
 | `confirm_and_apply` | Execute a previously previewed change | `plan_id` from a draft tool, `dry_run` (default true) |
 

@@ -115,6 +115,9 @@ All write operations follow a **draft → preview → confirm** workflow. Nothin
 | `update_campaign` | Modify existing campaign settings — bidding, budget, geo/language targeting, Search partners, display expansion, and TARGET_SPEND (Maximize Clicks) `max_cpc` caps. |
 | `draft_ad_group` | Create a paused SEARCH_STANDARD ad group inside an existing campaign, with optional MANUAL_CPC `max_cpc`. |
 | `update_ad_group` | Update an ad group name and/or MANUAL_CPC `max_cpc`. Use `pause_entity` / `enable_entity` for ad-group status changes. |
+| `create_conversion_action` | Draft a new conversion action (`type` AD_CALL or WEBSITE_CALL, `category`, `phone_call_duration_seconds`, `counting_type`, `status` ENABLED/HIDDEN, `primary_for_goal`, optional `value_settings`). Preview, then `validate_plan_only`, then `confirm_and_apply` (returns resource name + id). |
+| `update_conversion_action` | Update an existing conversion action. Only `primary_for_goal`, `status`, `counting_type`, `phone_call_duration_seconds`; any other field is rejected. |
+| `update_call_asset` | Update an existing CALL asset (`customers/{cid}/assets/{id}`): `call_asset.call_conversion_reporting_state` and `call_asset.call_conversion_action` only. Assets are documented as immutable and these fields are not marked immutable in the v23 proto, so run `validate_plan_only` first; if Google refuses, create a new call asset with `draft_call_asset` and relink. |
 | `draft_responsive_search_ad` | Create RSA preview (3-15 headlines ≤30 chars, 2-4 descriptions ≤90 chars). Warns if headline/description count is below best practice. |
 | `draft_callouts` | Create campaign callout assets from 1-25 character text snippets. |
 | `draft_structured_snippets` | Create campaign structured snippet assets using official header values and 3-10 snippet values. |

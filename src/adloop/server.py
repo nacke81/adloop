@@ -137,6 +137,9 @@ _WRITE_TOOL_NAMES = {
     "draft_pmax_url_expansion",
     "draft_pmax_asset_group_assets",
     "draft_call_asset",
+    "create_conversion_action",
+    "update_conversion_action",
+    "update_call_asset",
     "draft_youtube_video_upload",
     "draft_ad_group",
     "update_campaign",
@@ -1238,6 +1241,115 @@ def draft_call_asset(
         campaign_id=campaign_id,
         phone_number=phone_number,
         country_code=country_code,
+    )
+
+
+@mcp.tool(annotations=_WRITE)
+@_safe
+def create_conversion_action(
+    name: str,
+    type: str = "AD_CALL",
+    category: str = "PHONE_CALL_LEAD",
+    phone_call_duration_seconds: int | None = None,
+    counting_type: str = "ONE_PER_CLICK",
+    status: str = "ENABLED",
+    primary_for_goal: bool = True,
+    value_settings: dict | None = None,
+    customer_id: str = "",
+) -> dict:
+    """Draft a new conversion action (ConversionActionService). Returns a PREVIEW.
+
+    type: AD_CALL (calls from ads) or WEBSITE_CALL. category e.g. PHONE_CALL_LEAD.
+    counting_type ONE_PER_CLICK or MANY_PER_CLICK. status ENABLED or HIDDEN.
+    value_settings optional: default_value, default_currency_code,
+    always_use_default_value. Run validate_plan_only first (validate_only, nothing
+    created), then confirm_and_apply; apply returns resource_name and
+    conversion_action_id.
+    """
+    from adloop.ads.conversion_write import draft_create_conversion_action as _impl
+
+    return _impl(
+        _config,
+        customer_id=customer_id or _config.ads.customer_id,
+        name=name,
+        type=type,
+        category=category,
+        phone_call_duration_seconds=phone_call_duration_seconds,
+        counting_type=counting_type,
+        status=status,
+        primary_for_goal=primary_for_goal,
+        value_settings=value_settings,
+    )
+
+
+@mcp.tool(annotations=_WRITE)
+@_safe
+def update_conversion_action(
+    conversion_action_id: str,
+    primary_for_goal: bool | None = None,
+    status: str = "",
+    counting_type: str = "",
+    phone_call_duration_seconds: int | None = None,
+    customer_id: str = "",
+) -> dict:
+    """Draft an update to an existing conversion action. Returns a PREVIEW.
+
+    Only primary_for_goal, status (ENABLED/HIDDEN), counting_type and
+    phone_call_duration_seconds can change; the field mask is built from the
+    values provided. Run validate_plan_only first, then confirm_and_apply.
+    """
+    from adloop.ads.conversion_write import draft_update_conversion_action as _impl
+
+    fields = {
+        k: v
+        for k, v in {
+            "primary_for_goal": primary_for_goal,
+            "status": status,
+            "counting_type": counting_type,
+            "phone_call_duration_seconds": phone_call_duration_seconds,
+        }.items()
+        if v is not None and v != ""
+    }
+    return _impl(
+        _config,
+        customer_id=customer_id or _config.ads.customer_id,
+        conversion_action_id=conversion_action_id,
+        **fields,
+    )
+
+
+@mcp.tool(annotations=_WRITE)
+@_safe
+def update_call_asset(
+    asset_id: str,
+    call_conversion_reporting_state: str = "",
+    call_conversion_action: str = "",
+    customer_id: str = "",
+) -> dict:
+    """Draft an update to an existing CALL asset's conversion setting. PREVIEW.
+
+    Only call_asset.call_conversion_reporting_state
+    (USE_RESOURCE_LEVEL_CALL_CONVERSION_ACTION, USE_ACCOUNT_LEVEL_CALL_CONVERSION_ACTION,
+    DISABLED) and call_asset.call_conversion_action (id or resource name) can change.
+    Google's asset docs say assets are immutable and these fields are not marked
+    immutable in the proto, so ALWAYS run validate_plan_only first. If Google
+    refuses, create a new call asset with draft_call_asset and relink.
+    """
+    from adloop.ads.conversion_write import draft_update_call_asset as _impl
+
+    fields = {
+        k: v
+        for k, v in {
+            "call_conversion_reporting_state": call_conversion_reporting_state,
+            "call_conversion_action": call_conversion_action,
+        }.items()
+        if v
+    }
+    return _impl(
+        _config,
+        customer_id=customer_id or _config.ads.customer_id,
+        asset_id=asset_id,
+        **fields,
     )
 
 
