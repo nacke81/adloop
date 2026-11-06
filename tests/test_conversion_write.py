@@ -303,3 +303,82 @@ class TestRealSignature:
             assert req.validate_only is flag
             assert req.customer_id == CID
             assert len(req.operations) == 1
+
+
+class _FakeAdsException(Exception):
+    def __init__(self, failure):
+        super().__init__("boom")
+        self.failure = failure
+
+
+def _failure(client, **code):
+    # The live GoogleAdsException carries the raw protobuf failure, not proto-plus.
+    failure = client.get_type("GoogleAdsFailure")._pb
+    err = failure.errors.add()
+    for k, v in code.items():
+        setattr(err.error_code, k, v)
+    return failure
+
+
+class TestCallConversionConstraints:
+    """Constraints found by live validate_only probes against customer 3865591631."""
+
+    def test_lead_is_not_a_category(self, config):
+        r = cw.draft_create_conversion_action(config, customer_id=CID, name="n", category="LEAD")
+        assert r["error"] == "Validation failed"
+
+    def test_every_category_exists_in_enum(self, client):
+        for name in cw.CATEGORIES:
+            assert hasattr(client.enums.ConversionActionCategoryEnum, name), name
+
+    @pytest.mark.parametrize("type_", ["AD_CALL", "WEBSITE_CALL"])
+    def test_always_use_default_value_false_rejected(self, config, type_):
+        r = cw.draft_create_conversion_action(
+            config, customer_id=CID, name="n", type=type_,
+            value_settings={"always_use_default_value": False},
+        )
+        assert r["error"] == "Validation failed"
+        assert any("always_use_default_value must be true" in d for d in r["details"])
+
+    def test_always_use_default_value_true_accepted(self, config):
+        r = cw.draft_create_conversion_action(
+            config, customer_id=CID, name="n",
+            value_settings={"always_use_default_value": True, "default_value": 1, "default_currency_code": "usd"},
+        )
+        assert r["operation"] == "create_conversion_action"
+        remove_plan(r["plan_id"])
+
+    def test_ad_call_unknown_request_error_gets_actionable_hint(self, client):
+        c, svc = _mock_svc_client(client, "ConversionActionService", "x")
+        enum = _request_error_unknown(client)
+        svc.mutate_conversion_actions.side_effect = _FakeAdsException(_failure(client, request_error=enum))
+        with pytest.raises(RuntimeError, match="request_error UNKNOWN"):
+            cw.apply_create_conversion_action(c, CID, {
+                "name": "n", "type": "AD_CALL", "category": "PHONE_CALL_LEAD",
+                "counting_type": "ONE_PER_CLICK", "status": "ENABLED", "primary_for_goal": True,
+            }, validate_only=True)
+
+    def test_other_errors_and_types_pass_through(self, client):
+        c, svc = _mock_svc_client(client, "ConversionActionService", "x")
+        enum = _request_error_unknown(client)
+        svc.mutate_conversion_actions.side_effect = _FakeAdsException(_failure(client, request_error=enum))
+        with pytest.raises(_FakeAdsException):
+            cw.apply_create_conversion_action(c, CID, {
+                "name": "n", "type": "WEBSITE_CALL", "category": "PHONE_CALL_LEAD",
+                "counting_type": "ONE_PER_CLICK", "status": "ENABLED", "primary_for_goal": True,
+            }, validate_only=True)
+        other = _mutate_not_allowed(client)
+        svc.mutate_conversion_actions.side_effect = _FakeAdsException(_failure(client, mutate_error=other))
+        with pytest.raises(_FakeAdsException):
+            cw.apply_create_conversion_action(c, CID, {
+                "name": "n", "type": "AD_CALL", "category": "PHONE_CALL_LEAD",
+                "counting_type": "ONE_PER_CLICK", "status": "ENABLED", "primary_for_goal": True,
+            }, validate_only=True)
+
+
+def _request_error_unknown(client):
+    return client.get_type("RequestErrorEnum").RequestError.UNKNOWN
+
+
+def _mutate_not_allowed(client):
+    return client.get_type("MutateErrorEnum").MutateError.MUTATE_NOT_ALLOWED

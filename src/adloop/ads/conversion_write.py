@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 CREATE_TYPES = {"AD_CALL", "WEBSITE_CALL"}
 CATEGORIES = {
-    "DEFAULT", "PAGE_VIEW", "PURCHASE", "SIGNUP", "LEAD", "DOWNLOAD",
+    "DEFAULT", "PAGE_VIEW", "PURCHASE", "SIGNUP", "DOWNLOAD",
     "ADD_TO_CART", "BEGIN_CHECKOUT", "SUBSCRIBE_PAID", "PHONE_CALL_LEAD",
     "IMPORTED_LEAD", "SUBMIT_LEAD_FORM", "BOOK_APPOINTMENT", "REQUEST_QUOTE",
     "GET_DIRECTIONS", "OUTBOUND_CLICK", "CONTACT", "ENGAGEMENT", "STORE_VISIT",
@@ -30,6 +30,39 @@ REPORTING_STATES = {
     "DISABLED",
 }
 CALL_ASSET_FIELDS = ("call_conversion_reporting_state", "call_conversion_action")
+
+# Live validate_only probes (v23 and v26, same result) showed AD_CALL creation is
+# refused with request_error UNKNOWN ("The error code is not in this version.")
+# for EVERY field combination on an account whose call_reporting_setting already
+# points at a Google-managed account-level action, while WEBSITE_CALL and
+# CLICK_TO_CALL pass. So the cause is not a bad field and not a stale client.
+AD_CALL_UNKNOWN_HINT = (
+    "Google refused AD_CALL creation with request_error UNKNOWN (an error code "
+    "the API does not publish). This is not a field problem and not a client "
+    "version problem: it is returned for every field combination. Likely cause "
+    "(unproven): the account already has a Google-managed account-level 'Calls "
+    "from ads' action (see customer.call_reporting_setting.call_conversion_action). "
+    "Use update_call_asset with call_conversion_reporting_state="
+    "USE_ACCOUNT_LEVEL_CALL_CONVERSION_ACTION, or create the AD_CALL action in "
+    "the Google Ads UI. WEBSITE_CALL creation is accepted."
+)
+
+
+def _is_unknown_request_error(exc: Exception) -> bool:
+    failure = getattr(exc, "failure", None)
+    if failure is None:
+        return False
+    errors = list(failure.errors)
+    if not errors:
+        return False
+    for e in errors:
+        # Live exceptions carry proto-plus wrappers, tests may pass raw protobuf;
+        # normalise to the raw message, where request_error is the int enum value
+        # (RequestError.UNKNOWN == 1).
+        code = getattr(e.error_code, "_pb", e.error_code)
+        if code.WhichOneof("error_code") != "request_error" or code.request_error != 1:
+            return False
+    return True
 
 
 def _id_from(value: object, collection: str) -> str:
@@ -126,6 +159,12 @@ def draft_create_conversion_action(
             vs["default_currency_code"] = cur
         if "always_use_default_value" in value_settings:
             vs["always_use_default_value"] = bool(value_settings["always_use_default_value"])
+            if type_ in CREATE_TYPES and not vs["always_use_default_value"]:
+                # Google rejects false for AD_CALL / WEBSITE_CALL (field_error
+                # INVALID_VALUE, confirmed with validate_only).
+                errors.append(
+                    f"value_settings.always_use_default_value must be true for {type_}"
+                )
     if errors:
         return {"error": "Validation failed", "details": errors}
     changes: dict = {
@@ -170,7 +209,12 @@ def apply_create_conversion_action(
     request.customer_id = cid
     request.operations.append(op)
     request.validate_only = bool(validate_only)
-    resp = svc.mutate_conversion_actions(request=request)
+    try:
+        resp = svc.mutate_conversion_actions(request=request)
+    except Exception as exc:
+        if changes.get("type") == "AD_CALL" and _is_unknown_request_error(exc):
+            raise RuntimeError(AD_CALL_UNKNOWN_HINT) from exc
+        raise
     result: dict = {"validate_only": bool(validate_only), "operations": 1}
     if not validate_only:
         rn = resp.results[0].resource_name
