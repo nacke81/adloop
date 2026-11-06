@@ -166,9 +166,11 @@ def apply_create_conversion_action(
 ) -> dict:
     svc = client.get_service("ConversionActionService")
     op = build_create_conversion_action_op(client, cid, changes)
-    resp = svc.mutate_conversion_actions(
-        customer_id=cid, operations=[op], validate_only=bool(validate_only)
-    )
+    request = client.get_type("MutateConversionActionsRequest")
+    request.customer_id = cid
+    request.operations.append(op)
+    request.validate_only = bool(validate_only)
+    resp = svc.mutate_conversion_actions(request=request)
     result: dict = {"validate_only": bool(validate_only), "operations": 1}
     if not validate_only:
         rn = resp.results[0].resource_name
@@ -258,9 +260,11 @@ def apply_update_conversion_action(
 ) -> dict:
     svc = client.get_service("ConversionActionService")
     op = build_update_conversion_action_op(client, cid, changes)
-    resp = svc.mutate_conversion_actions(
-        customer_id=cid, operations=[op], validate_only=bool(validate_only)
-    )
+    request = client.get_type("MutateConversionActionsRequest")
+    request.customer_id = cid
+    request.operations.append(op)
+    request.validate_only = bool(validate_only)
+    resp = svc.mutate_conversion_actions(request=request)
     result: dict = {"validate_only": bool(validate_only), "operations": 1}
     if not validate_only:
         result["resource_name"] = resp.results[0].resource_name
@@ -356,9 +360,11 @@ def apply_update_call_asset(
 ) -> dict:
     svc = client.get_service("AssetService")
     op = build_update_call_asset_op(client, cid, changes)
-    resp = svc.mutate_assets(
-        customer_id=cid, operations=[op], validate_only=bool(validate_only)
-    )
+    request = client.get_type("MutateAssetsRequest")
+    request.customer_id = cid
+    request.operations.append(op)
+    request.validate_only = bool(validate_only)
+    resp = svc.mutate_assets(request=request)
     result: dict = {"validate_only": bool(validate_only), "operations": 1}
     if not validate_only:
         result["resource_name"] = resp.results[0].resource_name

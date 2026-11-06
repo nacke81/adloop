@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
 
@@ -31,11 +31,24 @@ def client():
     )
 
 
+def _strict_mutate(real_client, svc_name, method, resource_name):
+    """Mock whose signature matches the real client method, so unknown kwargs
+    (e.g. validate_only=) raise TypeError exactly like the live client."""
+    real_method = getattr(real_client.get_service(svc_name), method)
+    resp = MagicMock()
+    resp.results = [MagicMock(resource_name=resource_name)]
+    return create_autospec(real_method, return_value=resp)
+
+
 def _mock_svc_client(real_client, svc_name, resource_name):
-    """Real client types/enums, but the named service is a MagicMock."""
+    """Real client types/enums, but the named service is a strict mock."""
     svc = MagicMock()
-    svc.mutate_conversion_actions.return_value.results = [MagicMock(resource_name=resource_name)]
-    svc.mutate_assets.return_value.results = [MagicMock(resource_name=resource_name)]
+    svc.mutate_conversion_actions = _strict_mutate(
+        real_client, "ConversionActionService", "mutate_conversion_actions", resource_name
+    )
+    svc.mutate_assets = _strict_mutate(
+        real_client, "AssetService", "mutate_assets", resource_name
+    )
     real_get = real_client.get_service
     real_svc = real_get(svc_name)
     for attr in ("conversion_action_path", "asset_path"):
@@ -113,7 +126,7 @@ class TestCreateConversionAction:
         })
         assert out["resource_name"] == f"customers/{CID}/conversionActions/777"
         assert out["conversion_action_id"] == "777"
-        assert svc.mutate_conversion_actions.call_args.kwargs["validate_only"] is False
+        assert svc.mutate_conversion_actions.call_args.kwargs["request"].validate_only is False
 
 
 class TestUpdateConversionAction:
@@ -160,10 +173,10 @@ class TestUpdateConversionAction:
         with patch("adloop.ads.client.get_ads_client", return_value=c):
             out = validate_plan_only(config, plan_id=r["plan_id"])
             assert out["status"] == "VALIDATE_ONLY_OK"
-            assert svc.mutate_conversion_actions.call_args.kwargs["validate_only"] is True
+            assert svc.mutate_conversion_actions.call_args.kwargs["request"].validate_only is True
             assert get_plan(r["plan_id"]) is not None
             res = _execute_plan(config, get_plan(r["plan_id"]))
-        assert svc.mutate_conversion_actions.call_args.kwargs["validate_only"] is False
+        assert svc.mutate_conversion_actions.call_args.kwargs["request"].validate_only is False
         assert res["resource_name"].endswith("/5")
         remove_plan(r["plan_id"])
 
@@ -215,7 +228,7 @@ class TestUpdateCallAsset:
         with patch("adloop.ads.client.get_ads_client", return_value=c):
             out = validate_plan_only(config, plan_id=r["plan_id"])
         assert out["status"] == "VALIDATE_ONLY_OK"
-        assert svc.mutate_assets.call_args.kwargs["validate_only"] is True
+        assert svc.mutate_assets.call_args.kwargs["request"].validate_only is True
         remove_plan(r["plan_id"])
 
 
@@ -252,3 +265,41 @@ class TestExistingUnchanged:
         for n in ("create_conversion_action", "update_conversion_action", "update_call_asset"):
             assert n in server._WRITE_TOOL_NAMES
             assert callable(getattr(server, n))
+
+
+class TestRealSignature:
+    """Regression: validate_only belongs on the request, never a method kwarg."""
+
+    def test_strict_mock_rejects_validate_only_kwarg(self, client):
+        m = _strict_mutate(client, "AssetService", "mutate_assets", "x")
+        with pytest.raises(TypeError):
+            m(customer_id=CID, operations=[], validate_only=True)
+
+    def test_real_method_has_no_validate_only_param(self, client):
+        import inspect
+
+        for svc, meth in (("ConversionActionService", "mutate_conversion_actions"),
+                          ("AssetService", "mutate_assets")):
+            params = inspect.signature(getattr(client.get_service(svc), meth)).parameters
+            assert "validate_only" not in params and "request" in params
+
+    @pytest.mark.parametrize("flag", [True, False])
+    def test_all_apply_fns_put_validate_only_on_request(self, client, flag):
+        cases = [
+            (cw.apply_create_conversion_action, "ConversionActionService", "mutate_conversion_actions",
+             {"name": "n", "type": "AD_CALL", "category": "PHONE_CALL_LEAD",
+              "counting_type": "ONE_PER_CLICK", "status": "ENABLED", "primary_for_goal": True}),
+            (cw.apply_update_conversion_action, "ConversionActionService", "mutate_conversion_actions",
+             {"conversion_action_id": "5", "status": "HIDDEN"}),
+            (cw.apply_update_call_asset, "AssetService", "mutate_assets",
+             {"asset_id": "1", "call_conversion_action": "2"}),
+        ]
+        for fn, svc_name, meth, changes in cases:
+            c, svc = _mock_svc_client(client, svc_name, f"customers/{CID}/x/1")
+            fn(c, CID, changes, validate_only=flag)
+            call = getattr(svc, meth).call_args
+            assert call.args == ()
+            req = call.kwargs["request"]
+            assert req.validate_only is flag
+            assert req.customer_id == CID
+            assert len(req.operations) == 1
