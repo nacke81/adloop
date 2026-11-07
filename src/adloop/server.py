@@ -135,6 +135,8 @@ _WRITE_TOOL_NAMES = {
     "draft_pmax_campaign",
     "draft_pmax_asset_group",
     "draft_pmax_url_expansion",
+    "draft_add_campaign_geo_targets",
+    "draft_update_geo_target_type",
     "draft_pmax_asset_group_assets",
     "draft_call_asset",
     "create_conversion_action",
@@ -820,6 +822,47 @@ def draft_pmax_url_expansion(
         customer_id=customer_id or _config.ads.customer_id,
         campaign_id=campaign_id,
         opted_in=opted_in,
+    )
+
+
+@mcp.tool(annotations=_WRITE)
+@_safe
+def draft_add_campaign_geo_targets(
+    campaign_id: str, geo_target_constant_ids: list[str], customer_id: str = ""
+) -> dict:
+    """Draft ADDING positive location targets to a campaign. Returns a PREVIEW.
+
+    Additive only: existing targets are never removed, and ids already targeted
+    are skipped. The draft runs a real validate_only mutate and returns the
+    result in `validate_only_result`. Apply with confirm_and_apply.
+    """
+    from adloop.ads.geo_write import draft_add_campaign_geo_targets as _impl
+
+    return _impl(
+        _config,
+        customer_id=customer_id or _config.ads.customer_id,
+        campaign_id=campaign_id,
+        geo_target_constant_ids=geo_target_constant_ids,
+    )
+
+
+@mcp.tool(annotations=_WRITE)
+@_safe
+def draft_update_geo_target_type(
+    campaign_id: str, positive: str, customer_id: str = ""
+) -> dict:
+    """Draft setting the positive geo target type (PRESENCE or PRESENCE_OR_INTEREST).
+
+    Returns a PREVIEW with a real validate_only result. The negative type is
+    untouched. Apply with confirm_and_apply.
+    """
+    from adloop.ads.geo_write import draft_update_geo_target_type as _impl
+
+    return _impl(
+        _config,
+        customer_id=customer_id or _config.ads.customer_id,
+        campaign_id=campaign_id,
+        positive=positive,
     )
 
 

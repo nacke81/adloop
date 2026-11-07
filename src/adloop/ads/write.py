@@ -2178,6 +2178,8 @@ def _execute_plan(config: AdLoopConfig, plan: object) -> dict:
         "create_conversion_action": _apply_create_conversion_action,
         "update_conversion_action": _apply_update_conversion_action,
         "update_call_asset": _apply_update_call_asset,
+        "add_campaign_geo_targets": _apply_add_campaign_geo_targets,
+        "update_geo_target_type": _apply_update_geo_target_type,
     }
 
     handler = dispatch.get(plan.operation)
@@ -2241,6 +2243,18 @@ def _apply_update_pmax_url_expansion(client: object, cid: str, changes: dict) ->
     return apply_update_pmax_url_expansion(client, cid, changes)
 
 
+def _apply_add_campaign_geo_targets(client: object, cid: str, changes: dict) -> dict:
+    from adloop.ads.geo_write import apply_add_campaign_geo_targets
+
+    return apply_add_campaign_geo_targets(client, cid, changes)
+
+
+def _apply_update_geo_target_type(client: object, cid: str, changes: dict) -> dict:
+    from adloop.ads.geo_write import apply_update_geo_target_type
+
+    return apply_update_geo_target_type(client, cid, changes)
+
+
 def _apply_create_pmax_campaign(client: object, cid: str, changes: dict) -> dict:
     from adloop.ads.pmax_write import apply_create_pmax_campaign
 
@@ -2282,6 +2296,13 @@ def validate_plan_only(config: AdLoopConfig, *, plan_id: str) -> dict:
         "add_pmax_asset_group_assets": apply_add_pmax_asset_group_assets,
         "create_call_asset": apply_create_call_asset,
     }.get(plan.operation)
+    if fn is None:
+        from adloop.ads import geo_write as _gw
+
+        fn = {
+            "add_campaign_geo_targets": _gw.apply_add_campaign_geo_targets,
+            "update_geo_target_type": _gw.apply_update_geo_target_type,
+        }.get(plan.operation)
     if fn is None:
         from adloop.ads import conversion_write as _cw
 
