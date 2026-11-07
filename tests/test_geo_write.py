@@ -189,3 +189,68 @@ class TestServerGuards:
 
         names = {t.name for t in asyncio.run(server.mcp.list_tools())}
         assert {"draft_add_campaign_geo_targets", "draft_update_geo_target_type"} <= names
+
+
+class TestConfirmAndApply:
+    """Plans must be executable through confirm_and_apply (dispatch wired)."""
+
+    @pytest.fixture
+    def live_config(self, tmp_path):
+        return AdLoopConfig(
+            ads=AdsConfig(customer_id=CID, developer_token="test"),
+            safety=SafetyConfig(
+                max_daily_budget=50.0,
+                require_dry_run=False,
+                log_file=str(tmp_path / "audit.log"),
+            ),
+        )
+
+    def test_add_geo_targets_applies_with_validate_only_false(
+        self, config, live_config, real_client
+    ):
+        from adloop.ads.write import confirm_and_apply
+
+        svc = _wire(real_client)
+        with patch("adloop.ads.gaql.execute_query", return_value=[]), \
+             patch("adloop.ads.geo_write._get_client", return_value=real_client):
+            r = geo_write.draft_add_campaign_geo_targets(
+                config, customer_id=CID, campaign_id=CAMP,
+                geo_target_constant_ids=["9057698", "9057703"],
+            )
+        svc.mutate.reset_mock()
+        with patch("adloop.ads.client.get_ads_client", return_value=real_client):
+            out = confirm_and_apply(live_config, plan_id=r["plan_id"], dry_run=False)
+        assert "error" not in out, out
+        assert svc.mutate.call_count == 1
+        req = svc.mutate.call_args.kwargs["request"]
+        assert req.validate_only is False
+        assert len(req.mutate_operations) == 2
+        for op in req.mutate_operations:
+            co = op.campaign_criterion_operation
+            assert co._pb.WhichOneof("operation") == "create"
+            assert co.create.negative is False
+        remove_plan(r["plan_id"])
+
+    def test_update_geo_type_applies_with_validate_only_false(
+        self, config, live_config, real_client
+    ):
+        from adloop.ads.write import confirm_and_apply
+
+        svc = _wire(real_client)
+        with patch("adloop.ads.geo_write._get_client", return_value=real_client):
+            r = geo_write.draft_update_geo_target_type(
+                config, customer_id=CID, campaign_id=CAMP,
+                positive="PRESENCE_OR_INTEREST",
+            )
+        svc.mutate.reset_mock()
+        with patch("adloop.ads.client.get_ads_client", return_value=real_client):
+            out = confirm_and_apply(live_config, plan_id=r["plan_id"], dry_run=False)
+        assert "error" not in out, out
+        assert svc.mutate.call_count == 1
+        req = svc.mutate.call_args.kwargs["request"]
+        assert req.validate_only is False
+        u = req.mutate_operations[0].campaign_operation
+        assert list(u.update_mask.paths) == [
+            "geo_target_type_setting.positive_geo_target_type"
+        ]
+        remove_plan(r["plan_id"])

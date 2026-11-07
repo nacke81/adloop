@@ -2178,6 +2178,8 @@ def _execute_plan(config: AdLoopConfig, plan: object) -> dict:
         "create_conversion_action": _apply_create_conversion_action,
         "update_conversion_action": _apply_update_conversion_action,
         "update_call_asset": _apply_update_call_asset,
+        "add_campaign_geo_targets": _apply_add_campaign_geo_targets,
+        "update_geo_target_type": _apply_update_geo_target_type,
     }
 
     handler = dispatch.get(plan.operation)
