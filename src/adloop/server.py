@@ -195,25 +195,48 @@ def _normalize_property_id(property_id: str) -> str:
     return str(property_id).strip().removeprefix("properties/")
 
 
+def _allowed_ga4_properties() -> list[str]:
+    """Normalized allowed GA4 property ids, in order, de-duplicated.
+
+    Reads ADLOOP_ALLOWED_GA4_PROPERTY_IDS (comma-separated) first, then the
+    legacy single-id ADLOOP_ALLOWED_GA4_PROPERTY_ID for back-compat.
+    """
+    out: list[str] = []
+    for var in ("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "ADLOOP_ALLOWED_GA4_PROPERTY_ID"):
+        for item in os.environ.get(var, "").split(","):
+            pid = _normalize_property_id(item)
+            if pid and pid not in out:
+                out.append(pid)
+    return out
+
+
 def _enforce_ga4_property(fn: Callable, kwargs: dict) -> None:
-    """Default and lock every GA4 call to a profile-configured property, if set.
+    """Default and lock every GA4 call to profile-configured properties, if set.
 
     Applies to any tool whose signature takes ``property_id``. With
-    ADLOOP_ALLOWED_GA4_PROPERTY_ID set, an empty or omitted property_id is
-    filled with the allowed one and any other property is rejected before
-    an API call is made.
+    ADLOOP_ALLOWED_GA4_PROPERTY_IDS (or the legacy single-id var) set, any
+    property not on the list is rejected before an API call is made. An empty
+    or omitted property_id defaults only when exactly one property is allowed;
+    with multiple allowed properties, callers must pass property_id.
     """
-    allowed = os.environ.get("ADLOOP_ALLOWED_GA4_PROPERTY_ID", "")
+    allowed = _allowed_ga4_properties()
     if not allowed or "property_id" not in inspect.signature(fn).parameters:
         return
     requested = kwargs.get("property_id", "")
-    if requested and _normalize_property_id(requested) != _normalize_property_id(allowed):
+    if not requested and len(allowed) > 1:
         raise RuntimeError(
-            f"GA4 access is restricted to property {_normalize_property_id(allowed)} "
+            "property_id is required when more than one GA4 property is allowed; "
+            f"pass property_id; allowed: {', '.join(f'properties/{p}' for p in allowed)}"
+        )
+    if requested and _normalize_property_id(requested) not in allowed:
+        label = "property" if len(allowed) == 1 else "properties"
+        raise RuntimeError(
+            f"GA4 access is restricted to {label} {', '.join(allowed)} "
             f"for this AdLoop seat."
         )
     # The GA4 Data API requires the resource form ``properties/<id>``.
-    kwargs["property_id"] = f"properties/{_normalize_property_id(allowed)}"
+    chosen = _normalize_property_id(requested) if requested else allowed[0]
+    kwargs["property_id"] = f"properties/{chosen}"
 
 
 def _structured_error(fn_name: str, exc: Exception) -> dict:
@@ -413,7 +436,9 @@ def run_ga4_report(
     Common metrics: sessions, totalUsers, newUsers, screenPageViews, conversions, eventCount, bounceRate
 
     Date formats: "today", "yesterday", "7daysAgo", "28daysAgo", "90daysAgo", or "YYYY-MM-DD".
-    If property_id is empty, uses the default from config.
+    If property_id is empty, uses the sole seat-allowed property (or config
+    default if unrestricted). Multiple seat-allowed properties require an
+    explicit property_id.
     """
     from adloop.ga4.reports import run_ga4_report as _impl
 
@@ -473,9 +498,27 @@ def get_tracking_events(
     )
 
 
-def _allowed_key_event_names() -> set[str]:
+def _allowed_key_event_names(property_id: str = "") -> set[str]:
+    """Key event names allowed on a property.
+
+    ADLOOP_ALLOWED_KEY_EVENT_NAMES is comma-separated. A bare ``name`` is
+    allowed on every allowed property; ``properties/<id>:name`` (or
+    ``<id>:name``) is allowed on that property only.
+    """
     raw = os.environ.get("ADLOOP_ALLOWED_KEY_EVENT_NAMES", "")
-    return {n.strip() for n in raw.split(",") if n.strip()}
+    target = _normalize_property_id(property_id)
+    names: set[str] = set()
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            prop, _, name = item.rpartition(":")
+            if name.strip() and _normalize_property_id(prop) == target:
+                names.add(name.strip())
+        else:
+            names.add(item)
+    return names
 
 
 @mcp.tool(annotations=_WRITE)
@@ -487,16 +530,21 @@ def create_ga4_key_event(
 ) -> dict:
     """Mark one GA4 event as a key event (Admin API keyEvents.create).
 
-    Seat-locked: refuses unless ADLOOP_ALLOWED_GA4_PROPERTY_ID is set (the
-    property guard pins the property) and event_name is listed in
-    ADLOOP_ALLOWED_KEY_EVENT_NAMES. Idempotent: if the key event already
-    exists it is returned and nothing is created.
+    Seat-locked: refuses unless ADLOOP_ALLOWED_GA4_PROPERTY_IDS (or the legacy
+    ADLOOP_ALLOWED_GA4_PROPERTY_ID) is set (the property guard restricts the
+    property to that list) and event_name is listed in
+    ADLOOP_ALLOWED_KEY_EVENT_NAMES, either bare (any allowed property) or as
+    ``properties/<id>:name`` (that property only). With multiple allowed
+    properties, property_id is required; a sole allowed property is the default.
+    Idempotent: if the key
+    event already exists it is returned and nothing is created.
     """
-    if not os.environ.get("ADLOOP_ALLOWED_GA4_PROPERTY_ID", ""):
+    if not _allowed_ga4_properties():
         raise RuntimeError(
-            "create_ga4_key_event requires ADLOOP_ALLOWED_GA4_PROPERTY_ID on this seat."
+            "create_ga4_key_event requires ADLOOP_ALLOWED_GA4_PROPERTY_IDS "
+            "(or ADLOOP_ALLOWED_GA4_PROPERTY_ID) on this seat."
         )
-    allowed_names = _allowed_key_event_names()
+    allowed_names = _allowed_key_event_names(property_id)
     if event_name not in allowed_names:
         raise RuntimeError(
             f"Key event '{event_name}' is not allowed for this AdLoop seat "
