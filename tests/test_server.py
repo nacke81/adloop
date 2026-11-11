@@ -96,7 +96,7 @@ class TestCreateKeyEventGuard:
     def test_refuses_without_property_lock(self, fake, monkeypatch):
         monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID")
         out = self._tool()(event_name="free_consultation_form")
-        assert "requires ADLOOP_ALLOWED_GA4_PROPERTY_ID" in out["error"]
+        assert "requires ADLOOP_ALLOWED_GA4_PROPERTY_IDS" in out["error"]
         assert fake.calls == []
 
     def test_refuses_other_property(self, fake):
@@ -125,6 +125,103 @@ class TestCreateKeyEventGuard:
         out = self._tool()(event_name="free_consultation_form")
         assert out["created"] is False and out["already_exists"] is True
         assert all(c[0] != "create" for c in fake.calls)
+
+
+class TestGA4PropertyAllowList:
+    def test_accepts_each_listed_property(self, monkeypatch):
+        monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", raising=False)
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "properties/402985876, 413528788")
+        for req in ("402985876", "properties/413528788"):
+            kwargs = {"property_id": req}
+            _enforce_ga4_property(_fake_ga4_tool, kwargs)
+            assert kwargs["property_id"] == "properties/" + req.removeprefix("properties/")
+
+    def test_omitted_defaults_to_first(self, monkeypatch):
+        monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", raising=False)
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "402985876,413528788")
+        kwargs = {}
+        _enforce_ga4_property(_fake_ga4_tool, kwargs)
+        assert kwargs["property_id"] == "properties/402985876"
+
+    def test_rejects_unlisted(self, monkeypatch):
+        monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", raising=False)
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "402985876,413528788")
+        with pytest.raises(RuntimeError, match="restricted to properties 402985876, 413528788"):
+            _enforce_ga4_property(_fake_ga4_tool, {"property_id": "356448527"})
+
+    def test_legacy_var_merges_with_list(self, monkeypatch):
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", "413528788")
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "402985876")
+        kwargs = {"property_id": "413528788"}
+        _enforce_ga4_property(_fake_ga4_tool, kwargs)
+        assert kwargs["property_id"] == "properties/413528788"
+
+
+class TestCreateKeyEventAllowList:
+    """Strict fake: autospec of the real AnalyticsAdminServiceClient."""
+
+    @pytest.fixture
+    def fake(self, monkeypatch):
+        from unittest import mock
+
+        from google.analytics.admin_v1beta import AnalyticsAdminServiceClient
+
+        client = mock.create_autospec(AnalyticsAdminServiceClient, instance=True)
+        client.list_key_events.return_value = []
+        client.create_key_event.side_effect = lambda parent, key_event: _FakeKeyEvent(
+            f"{parent}/keyEvents/1", key_event.event_name
+        )
+        import adloop.ga4.client as gc
+
+        monkeypatch.setattr(gc, "get_admin_client", lambda cfg: client)
+        monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", raising=False)
+        monkeypatch.setenv(
+            "ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "properties/402985876,properties/413528788"
+        )
+        monkeypatch.setenv(
+            "ADLOOP_ALLOWED_KEY_EVENT_NAMES",
+            "properties/402985876:generate_lead,properties/413528788:free_consultation_form",
+        )
+        return client
+
+    def _tool(self):
+        from adloop.server import create_ga4_key_event
+
+        return create_ga4_key_event
+
+    def test_creates_allowed_name_on_nm(self, fake):
+        out = self._tool()(event_name="generate_lead", property_id="properties/402985876")
+        assert out["created"] is True
+        assert fake.create_key_event.call_args.kwargs["parent"] == "properties/402985876"
+
+    def test_unlisted_property_refused_offline(self, fake):
+        out = self._tool()(event_name="generate_lead", property_id="356448527")
+        assert "restricted to properties" in out["error"]
+        fake.list_key_events.assert_not_called()
+        fake.create_key_event.assert_not_called()
+
+    def test_name_not_allowed_on_other_property(self, fake):
+        out = self._tool()(event_name="generate_lead", property_id="413528788")
+        assert "not allowed" in out["error"]
+        fake.list_key_events.assert_not_called()
+        fake.create_key_event.assert_not_called()
+
+    def test_unlisted_name_refused(self, fake):
+        out = self._tool()(event_name="purchase", property_id="402985876")
+        assert "not allowed" in out["error"]
+        fake.create_key_event.assert_not_called()
+
+    def test_idempotent_second_call_creates_nothing(self, fake):
+        existing = _FakeKeyEvent("properties/402985876/keyEvents/9", "generate_lead")
+        fake.list_key_events.return_value = [existing]
+        out = self._tool()(event_name="generate_lead", property_id="402985876")
+        assert out["created"] is False and out["already_exists"] is True
+        fake.create_key_event.assert_not_called()
+
+    def test_bare_name_allowed_on_every_listed_property(self, fake, monkeypatch):
+        monkeypatch.setenv("ADLOOP_ALLOWED_KEY_EVENT_NAMES", "generate_lead")
+        out = self._tool()(event_name="generate_lead", property_id="413528788")
+        assert out["created"] is True
 
 
 def test_structured_error_detects_invalid_developer_token():
