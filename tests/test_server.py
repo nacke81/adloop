@@ -136,9 +136,29 @@ class TestGA4PropertyAllowList:
             _enforce_ga4_property(_fake_ga4_tool, kwargs)
             assert kwargs["property_id"] == "properties/" + req.removeprefix("properties/")
 
-    def test_omitted_defaults_to_first(self, monkeypatch):
+    @pytest.mark.parametrize("kwargs", [{}, {"property_id": ""}])
+    def test_omitted_refused_when_several_allowed(self, monkeypatch, kwargs):
         monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", raising=False)
         monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "402985876,413528788")
+        with pytest.raises(RuntimeError, match="pass property_id; allowed: properties/402985876, properties/413528788"):
+            _enforce_ga4_property(_fake_ga4_tool, kwargs)
+
+    def test_omitted_refused_for_engineer_seat_env(self, monkeypatch):
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", "properties/413528788")
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "properties/402985876,properties/413528788")
+        with pytest.raises(RuntimeError, match="pass property_id"):
+            _enforce_ga4_property(_fake_ga4_tool, {})
+
+    def test_omitted_defaults_when_single_allowed(self, monkeypatch):
+        monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", raising=False)
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", "413528788")
+        kwargs = {}
+        _enforce_ga4_property(_fake_ga4_tool, kwargs)
+        assert kwargs["property_id"] == "properties/413528788"
+
+    def test_omitted_defaults_when_single_in_list_var(self, monkeypatch):
+        monkeypatch.delenv("ADLOOP_ALLOWED_GA4_PROPERTY_ID", raising=False)
+        monkeypatch.setenv("ADLOOP_ALLOWED_GA4_PROPERTY_IDS", "402985876")
         kwargs = {}
         _enforce_ga4_property(_fake_ga4_tool, kwargs)
         assert kwargs["property_id"] == "properties/402985876"
@@ -193,6 +213,12 @@ class TestCreateKeyEventAllowList:
         out = self._tool()(event_name="generate_lead", property_id="properties/402985876")
         assert out["created"] is True
         assert fake.create_key_event.call_args.kwargs["parent"] == "properties/402985876"
+
+    @pytest.mark.parametrize("kwargs", [{}, {"property_id": ""}])
+    def test_omitted_property_refused_before_client(self, fake, kwargs):
+        out = self._tool()(event_name="generate_lead", **kwargs)
+        assert "pass property_id; allowed: properties/402985876, properties/413528788" in out["error"]
+        assert fake.mock_calls == []
 
     def test_unlisted_property_refused_offline(self, fake):
         out = self._tool()(event_name="generate_lead", property_id="356448527")

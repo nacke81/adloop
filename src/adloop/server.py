@@ -214,14 +214,20 @@ def _enforce_ga4_property(fn: Callable, kwargs: dict) -> None:
     """Default and lock every GA4 call to profile-configured properties, if set.
 
     Applies to any tool whose signature takes ``property_id``. With
-    ADLOOP_ALLOWED_GA4_PROPERTY_IDS (or the legacy single-id var) set, an
-    empty or omitted property_id is filled with the first allowed one and any
-    property not on the list is rejected before an API call is made.
+    ADLOOP_ALLOWED_GA4_PROPERTY_IDS (or the legacy single-id var) set, any
+    property not on the list is rejected before an API call is made. An empty
+    or omitted property_id defaults only when exactly one property is allowed;
+    with multiple allowed properties, callers must pass property_id.
     """
     allowed = _allowed_ga4_properties()
     if not allowed or "property_id" not in inspect.signature(fn).parameters:
         return
     requested = kwargs.get("property_id", "")
+    if not requested and len(allowed) > 1:
+        raise RuntimeError(
+            "property_id is required when more than one GA4 property is allowed; "
+            f"pass property_id; allowed: {', '.join(f'properties/{p}' for p in allowed)}"
+        )
     if requested and _normalize_property_id(requested) not in allowed:
         label = "property" if len(allowed) == 1 else "properties"
         raise RuntimeError(
@@ -430,7 +436,9 @@ def run_ga4_report(
     Common metrics: sessions, totalUsers, newUsers, screenPageViews, conversions, eventCount, bounceRate
 
     Date formats: "today", "yesterday", "7daysAgo", "28daysAgo", "90daysAgo", or "YYYY-MM-DD".
-    If property_id is empty, uses the default from config.
+    If property_id is empty, uses the sole seat-allowed property (or config
+    default if unrestricted). Multiple seat-allowed properties require an
+    explicit property_id.
     """
     from adloop.ga4.reports import run_ga4_report as _impl
 
@@ -526,7 +534,9 @@ def create_ga4_key_event(
     ADLOOP_ALLOWED_GA4_PROPERTY_ID) is set (the property guard restricts the
     property to that list) and event_name is listed in
     ADLOOP_ALLOWED_KEY_EVENT_NAMES, either bare (any allowed property) or as
-    ``properties/<id>:name`` (that property only). Idempotent: if the key
+    ``properties/<id>:name`` (that property only). With multiple allowed
+    properties, property_id is required; a sole allowed property is the default.
+    Idempotent: if the key
     event already exists it is returned and nothing is created.
     """
     if not _allowed_ga4_properties():
